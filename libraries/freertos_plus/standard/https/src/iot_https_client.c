@@ -1114,7 +1114,7 @@ IotHttpsReturnCode_t IotHttpsClient_InitializeRequest(IotHttpsRequestHandle_t * 
     }
 
     /* Check of the user buffer is large enough for the request context + default headers. */
-    if((*pReq).reqUserBuffer.pBuffer < requestUserBufferMinimumSize)
+    if((*pReq).reqUserBuffer.bufferLen < requestUserBufferMinimumSize)
     {
         IotLogError("Buffer size is too small to initialize the request context. User buffer size: %d, required minimum size; %d.", 
             (*pReq).reqUserBuffer.pBuffer,
@@ -1597,11 +1597,14 @@ static IotHttpsReturnCode_t _flushHttpsNetworkData( _httpsConnection_t* _httpsCo
         }
     }
 
-    /* All errors except timeout are returned. */
+    /* All network errors except timeout are returned. */
     if( networkStatus != IOT_HTTPS_TIMEOUT_ERROR)
     {
         return networkStatus;
     }
+
+    /* If there is a timeout error just return the parser status. */
+    return parserStatus;
 }
 
 /*-----------------------------------------------------------*/

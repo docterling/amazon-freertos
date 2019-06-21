@@ -558,7 +558,7 @@ IotHttpsReturnCode_t IotHttpsClient_ReadContentLength( IotHttpsResponseHandle_t 
  * }
  * @endcode
  * 
- * Fot a syncrhonous response, this routine is to be called after @ref https_client_function_sendsync has 
+ * For a syncrhonous response, this routine is to be called after @ref https_client_function_sendsync has 
  * returned successfully.
  * <b> Example Synchronous Code </b>
  * @code{c}
