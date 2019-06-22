@@ -359,16 +359,14 @@ IotHttpsReturnCode_t IotHttpsClient_SendSync(IotHttpsConnectionHandle_t* pConnHa
  * If a reqHandle was created in @ref https_client_function_initializerequest with pConnInfo set to NULL, then
  * pConnHandle is an IN parameter that is valid and must have been created with @ref https_client_function_connect.
  * 
- * @param[in out] connHandle - Handle from an HTTPS connection opened with IotHttpsClient_connect().
- * 
+ * @param[in out] pConnHandle - Handle from an HTTPS connection. If points to NULL then an implicit connection will be made.
  * @param[in] reqHandle - Handle from a request created with IotHttpsClient_initialize_request.
- * 
- * @param[out] resphandle - HTTPS response handle resulting from a successful send and receive.
+ * @param[out] pRespHandle - HTTPS response handle.
  * 
  * @return  IOT_HTTPS_OK - if the request was sent and the response was received successfully.
  *          IOT_HTTPS_MESSAGE_TOO_LARGE if the response cannot fit in the configured 
  *              IotHttpsRequestHandle_t.response_message.headers and IotHttpsRequestHandle_t.response_message.body.
- *          // TODO ADD MORE ERROR CODES
+ *          #IOT_HTTPS_CONNECTION_ERROR if the connection failed.
  *          Please see #IotHttpsReturnCode_t for other failure codes.
  */
 /* @[declare_https_client_sendasync] */
@@ -474,7 +472,7 @@ IotHttpsReturnCode_t IotHttpsClient_CancelRequestAsync(IotHttpsRequestHandle_t r
  * @endcode
  * 
  * param[in] respHandle - Unique handle representing the HTTPS response.
- * param[out] status - Integer status returned from the server response.
+ * param[out] pStatus - Integer status returned from the server response.
  * 
  * @return #IOT_HTTPS_OK if the response status was successfully read into *status.
  *         #IOT_HTTPS_INVALID_PARAMETER for NULL parameters.
@@ -482,7 +480,7 @@ IotHttpsReturnCode_t IotHttpsClient_CancelRequestAsync(IotHttpsRequestHandle_t r
  *         Error code otherwise, please see #IotHttpsReturnCode_t for for failure codes.
  */
 /* @[declare_https_client_readresponsestatus] */
-IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t respHandle, uint16_t *status);
+IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t respHandle, uint16_t *pStatus);
 /* @[declare_https_client_readresponsestatus] */
 
 /**
@@ -522,7 +520,7 @@ IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t 
  * @endcode
  * 
  * param[in] respHandle - Unique handle representing the HTTPS response.
- * param[out] contentLength - Integer content length from the Content-Length header from the server.
+ * param[out] pContentLength - Integer content length from the Content-Length header from the server.
  * 
  * @return #IOT_HTTPS_OK if the response body Content-Length was successfully read into contentLength.
  *         #IOT_HTTPS_NOT_FOUND if the Content-Length header was not found in the header buffer.
@@ -530,7 +528,7 @@ IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t 
  *         Error code otherwise, please see #IotHttpsReturnCode_t for for failure codes.
  */
 /* @[declare_https_client_readcontentlength] */
-IotHttpsReturnCode_t IotHttpsClient_ReadContentLength( IotHttpsResponseHandle_t respHandle, uint32_t *contentLength );
+IotHttpsReturnCode_t IotHttpsClient_ReadContentLength( IotHttpsResponseHandle_t respHandle, uint32_t *pContentLength );
 /* @[declare_https_client_readcontentlength] */
 
 /**

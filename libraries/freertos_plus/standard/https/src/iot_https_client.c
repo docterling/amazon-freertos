@@ -526,6 +526,23 @@ static IotHttpsReturnCode_t _flushHttpsNetworkData( _httpsConnection_t* _httpsCo
  */
 static void _receiveResponseAsync( IotTaskPool_t pTaskPool, IotTaskPoolJob_t pJob, void * pUserContext );
 
+/**
+ * @brief Implicitly connect if the pConnHandle is NULL or the current connection in pConnHandle is disconnected.
+ * 
+ * If reqHandle was created in @ref https_client_function_initializerequest with #IotHttpsRequestInfo_t.pConnInfo not 
+ * NULL, then pConnHandle is an OUT paramter and a new connection will be made. 
+ * If a reqHandle was created in @ref https_client_function_initializerequest with pConnInfo set to NULL, then
+ * pConnHandle is an IN parameter that is valid and must have been created with @ref https_client_function_connect.
+ * 
+ * @param[in] pConnHandle - Handle from an HTTPS connection. If points to NULL then an implicit connection will be made.
+ * @param[in] reqHandle - Handle from a request created with IotHttpsClient_initialize_request.
+ * @param[out] pRespHandle - HTTPS response handle.
+ * 
+ * @return  #IOT_HTTPS_OK - if the request was sent and the response was received successfully.
+ *          #IOT_HTTPS_CONNECTION_ERROR if the connection failed.
+ */
+static IotHttpsReturnCode_t _implicitlyConnect(IotHttpsConnectionHandle_t *pConnHandle, IotHttpsRequestHandle_t reqHandle, IotHttpsResponseHandle_t * pRespHandle);
+
 /*-----------------------------------------------------------*/
 
 /**
@@ -1637,32 +1654,12 @@ IotHttpsReturnCode_t IotHttpsClient_SendSync(IotHttpsConnectionHandle_t *pConnHa
     *pRespHandle = _httpsResponse;
 
     /* If the pConnHandle points to a NULL handle or the pConnHandle is false, then make the connection now. */
-    if( (* pConnHandle == NULL) || ((* pConnHandle)->isConnected == false ))
+    status = _implicitlyConnect(pConnHandle, reqHandle, pRespHandle);
+    if(status != IOT_HTTPS_OK)
     {
-        /* In order to make the connection now the pConnInfo member of IotHttpsRequestHandle_t must not be NULL. */
-        if(reqHandle->pConnInfo == NULL)
-        {
-            IotLogError("IotHttpsRequestInfo_t should have been confogired with pConnInfo not NULL in IotHttpsClient_InitializeRequest() in order to connect implicitly.");
-            IOT_GOTO_CLEANUP();
-        }
-        status = _connectHttpsServer(&(reqHandle->pConnHandle), reqHandle->pConnInfo);
-        if(status != IOT_HTTPS_OK)
-        {
-            IotLogError("An error occurred in connecting with th server with error code: %d", status);
-            IOT_GOTO_CLEANUP();
-        }
+        IotLogError("Failed to connect implicitly in IotHttpsClient_SendSync. Error code: %d", status);
+        return status;
     }
-    /* Else pConnHandle is not null and it is connected (DeMorgans law). */
-    else
-    {
-        reqHandle->pConnHandle = *pConnHandle;
-    }
-
-    /* Set the connection handles to return. */
-    *pConnHandle = reqHandle->pConnHandle;
-    *pRespHandle = reqHandle->pRespHandle;
-    ( *pRespHandle )->pConnHandle = *pConnHandle;
-    ( *pRespHandle )->pReqHandle = reqHandle;
 
     /* Set the internal connection context since we are connected now. */
     _httpsConnection = *pConnHandle;
@@ -2107,11 +2104,49 @@ static void _receiveResponseAsync( IotTaskPool_t pTaskPool, IotTaskPoolJob_t pJo
     }
 }
 
+/* --------------------------------------------------------- */
+
+static IotHttpsReturnCode_t _implicitlyConnect(IotHttpsConnectionHandle_t *pConnHandle, IotHttpsRequestHandle_t reqHandle, IotHttpsResponseHandle_t * pRespHandle)
+{
+    IotHttpsReturnCode_t status = IOT_HTTPS_OK;
+
+    /* If the pConnHandle points to a NULL handle or the pConnHandle is false, then make the connection now. */
+    if( (* pConnHandle == NULL) || ((* pConnHandle)->isConnected == false ))
+    {
+        /* In order to make the connection now the pConnInfo member of IotHttpsRequestHandle_t must not be NULL. */
+        if(reqHandle->pConnInfo == NULL)
+        {
+            IotLogError("IotHttpsRequestInfo_t should have been confogired with pConnInfo not NULL in IotHttpsClient_InitializeRequest() in order to connect implicitly.");
+            return IOT_HTTPS_INVALID_PARAMETER;
+        }
+        status = _connectHttpsServer(&(reqHandle->pConnHandle), reqHandle->pConnInfo);
+        if(status != IOT_HTTPS_OK)
+        {
+            IotLogError("An error occurred in connecting with th server with error code: %d", status);
+            return status;
+        }
+    }
+    /* Else pConnHandle is not null and it is connected (DeMorgans law). */
+    else
+    {
+        reqHandle->pConnHandle = *pConnHandle;
+    }
+
+    /* Set the connection handles to return. */
+    *pConnHandle = reqHandle->pConnHandle;
+    *pRespHandle = reqHandle->pRespHandle;
+    ( *pRespHandle )->pConnHandle = *pConnHandle;
+    ( *pRespHandle )->pReqHandle = reqHandle;
+
+    return IOT_HTTPS_OK;
+}
+
 /*-----------------------------------------------------------*/
 
 IotHttpsReturnCode_t IotHttpsClient_SendAsync(IotHttpsConnectionHandle_t *pConnHandle, IotHttpsRequestHandle_t reqHandle, IotHttpsResponseHandle_t * pRespHandle)
 {
     IotTaskPoolError_t taskPoolStatus = IOT_TASKPOOL_SUCCESS;
+    IotHttpsReturnCode_t status = IOT_HTTPS_OK;
 
     if(( pConnHandle == NULL) || (reqHandle == NULL) || (pRespHandle == NULL))
     {
@@ -2125,33 +2160,18 @@ IotHttpsReturnCode_t IotHttpsClient_SendAsync(IotHttpsConnectionHandle_t *pConnH
         return IOT_HTTPS_INVALID_PARAMETER;
     }
 
-    /* If there is connection info in the request handle, then make the connection now. The application developer will want to 
-       protect against making a connection twice if re-using a request.*/
-    if( reqHandle->pConnInfo != NULL )
+    /* Connect implicitly if we need to. */
+    status = _implicitlyConnect(pConnHandle, reqHandle, pRespHandle);
+    if(status != IOT_HTTPS_OK)
     {
-        IotHttpsReturnCode_t status = _connectHttpsServer( &(reqHandle->pConnHandle), reqHandle->pConnInfo );
-        if(reqHandle->callbacks->connectionEstablishedCallback && status == IOT_HTTPS_OK)
-        {
-            reqHandle->callbacks->connectionEstablishedCallback(reqHandle->pUserPrivData, *pConnHandle, status);
-        }
-        if(status != IOT_HTTPS_OK)
-        {
-            reqHandle->callbacks->errorCallback(reqHandle->pUserPrivData, reqHandle, status);
-        }
+        IotLogError("Failed to connect implicitly in IotHttpsClient_SendAsync. Error code: %d", status);
+        return status;
     }
-    else
-    {
-        reqHandle->pConnHandle = *pConnHandle;
-    }
-
-    /* Set the connection handles to return. */
-    *pConnHandle = reqHandle->pConnHandle;
-    *pRespHandle = reqHandle->pRespHandle;
-    ( *pRespHandle )->pConnHandle = *pConnHandle;
-    ( *pRespHandle )->pReqHandle = reqHandle;
 
     /* The response associated with this request is being fetched asynchronously. */
     (*pRespHandle)->isAsync = true;
+
+#if 0
 
     /* Schedule the request. */
     IotLogDebug( "Task with request ID: %d scheduled.", reqHandle );
@@ -2178,13 +2198,14 @@ IotHttpsReturnCode_t IotHttpsClient_SendAsync(IotHttpsConnectionHandle_t *pConnH
     }
 
     return IOT_HTTPS_OK;
+#endif
 }
 
 /*-----------------------------------------------------------*/
 
-IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t respHandle, uint16_t *status)
+IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t respHandle, uint16_t *pStatus)
 {
-    if((respHandle == NULL) || (status == NULL))
+    if((respHandle == NULL) || (pStatus == NULL))
     {
         IotLogError("NULL parameter passed into IotHttpsClient_ReadResponseStatus().");
         return IOT_HTTPS_INVALID_PARAMETER;
@@ -2195,7 +2216,7 @@ IotHttpsReturnCode_t IotHttpsClient_ReadResponseStatus(IotHttpsResponseHandle_t 
         IotLogError("The HTTP response status was not found in the HTTP response header buffer.");
         return IOT_HTTPS_NOT_FOUND;
     }
-    *status = respHandle->status;
+    *pStatus = respHandle->status;
     
     return IOT_HTTPS_OK;
 }
@@ -2238,10 +2259,10 @@ IotHttpsReturnCode_t IotHttpsClient_ReadHeader(IotHttpsResponseHandle_t respHand
 
 /*-----------------------------------------------------------*/
 
-IotHttpsReturnCode_t IotHttpsClient_ReadContentLength(IotHttpsResponseHandle_t respHandle, uint32_t *contentLength)
+IotHttpsReturnCode_t IotHttpsClient_ReadContentLength(IotHttpsResponseHandle_t respHandle, uint32_t *pContentLength)
 {   
     /* Check for NULL parameters in this public API. */
-    if((respHandle == NULL) || (contentLength == NULL))
+    if((respHandle == NULL) || (pContentLength == NULL))
     {
         IotLogError("NULL parameter passed into IotHttpsClient_ReadContentLength().");
         return IOT_HTTPS_INVALID_PARAMETER;
@@ -2255,7 +2276,7 @@ IotHttpsReturnCode_t IotHttpsClient_ReadContentLength(IotHttpsResponseHandle_t r
         return IOT_HTTPS_NOT_FOUND;
     }
 
-    *contentLength = respHandle->contentLength;
+    *pContentLength = respHandle->contentLength;
 
     return IOT_HTTPS_OK;
 }
